@@ -8,32 +8,19 @@ import math
 from random import random, shuffle
 import numpy as np
 
-def idx(c):
-	a = ord(c)
-	if a >= 0x61 and a <= 0x7A:
-		return a - 0x61
-	if a == 0x27: # '
-		return 0x1A
-	if a == 0x2D: # -
-		return 0x1B
-	if a == 0xA:  # CR
-		return 0x1C
-	return -1
+def ci(c):
+	if c == '\n':
+		return 0x5F
+	return ord(c) - 0x20
 
-def char(i):
-	if i >= 0 and i <= 0x19:
-		return chr(i + 0x61)
-	if a == 0x1A: # '
-		return chr(0x27)
-	if a == 0x1B: # -
-		return chr(0x2D)
-	if a == 0x1C: # CR
-		return chr(0xA)
-	return ''
+def ic(i):
+	if i == 0x5F:
+		return '\n'
+	return chr(i + 0x20)
 
 net = Network(1, 1)
-size = 0x1D
-shid = 0x80
+size = 0x60
+shid = 0x100
 
 net.nodes[0] = Matrix(size, shid) # W_xh
 net.nodes[1] = Matrix(shid, shid) # W_hh
@@ -55,7 +42,6 @@ net.paths.append(Path(( 5, 0), (-1, 0)))
 
 net.update()
 
-batch_size = 0x10
 '''
 def err_handler(type, flag):
 	raise Exception("Floating point error (%s), with flag %s" % (type, flag))
@@ -63,25 +49,61 @@ def err_handler(type, flag):
 saved_handler = np.seterrcall(err_handler)
 save_err = np.seterr(all='call')
 '''
-file = open('20k.txt')
-words = []
-for word in file:
-	words.append(word)
 
-del words[0x400:]
+book = open('harry_potter_and_the_sorcerers_stone.txt').read(0x1000)
+parts = []
+sents = []
+elems = []
 
-for k in range(0x20):
+i = 0
+while i >= 0:
+	ni = book.find('\n', i)
+	if ni < 0:
+		parts.append(book[i:])
+		break
+	parts.append(book[i:ni])
+	i = ni + 1
+
+for part in parts:
+	if len(part) < 1:
+		continue
+	i = 0
+	while i >= 0:
+		ecs = '.?!'
+		ni = -1
+		for c in ecs:
+			ti = part.find(c, i)
+			if ti >= 0 and (ni < 0 or ti < ni):
+				ni = ti
+		if ni < 0:
+			sents.append(part[i:])
+			break
+		sents.append(part[i:(ni+1)])
+		i = ni + 2
+
+for elem in sents:
+	if len(elem) > 1:
+		elems.append(elem)
+
+'''
+for elem in elems:
+	print(elem)
+'''
+
+batch_size = 0x1
+
+for k in range(0x10):
 	cost = 0.0
-	shuffle(words)
+	shuffle(elems)
 
-	for j in range(math.floor(len(words)/batch_size)):
+	for j in range(math.floor(len(elems)/batch_size)):
 		mem = net.Memory()
 		mem_stack = [mem]
 		exp = net.Experience()
 
 		for i in range(batch_size):
-			word = words[j*batch_size + i]
-			depth = len(word)
+			elem = elems[j*batch_size + i]
+			depth = len(elem)
 
 			mem.pipes[net._fpath_link[(1, 0)]].data = np.zeros(shid)
 			exp.pipes[net._bpath_link[(1, 0)]].data = np.zeros(shid)
@@ -89,8 +111,9 @@ for k in range(0x20):
 			vouts_stack = []
 
 			for l in range(depth - 1):
-				a = idx(word[l])
+				a = ci(elem[l])
 				lin = [0]*size
+				#print((ic(a)))
 				lin[a] = 1
 				vins = [np.array(lin)]
 				
@@ -100,7 +123,7 @@ for k in range(0x20):
 				vouts_stack.append(vouts)
 
 			for l in range(depth - 1):
-				a = idx(word[depth - l - 1])
+				a = ci(elem[depth - l - 1])
 				lres = [0]*size
 				lres[a] = 1
 				vres = np.array(lres)
@@ -112,30 +135,27 @@ for k in range(0x20):
 				# backpropagate
 				net.backprop(exp, mem_stack.pop(), verrs)
 		
-		exp.clip(1e1)
-		net.learn(exp, 1e-2/batch_size)
+		exp.clip(5e0)
+		net.learn(exp, 1e-3/batch_size)
 
-	print(str(k) + ' cost: ' + str(cost/len(words)))
+	print(str(k) + ' cost: ' + str(cost/len(elems)))
 
-alphabet = 'abcdefghijklmnopqrstuvwxyz'
+alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 for j in range(len(alphabet)):
 
 	mem = net.Memory()
 	mem.pipes[net._fpath_link[(1, 0)]].data = np.zeros(shid)
 
-	a = idx(alphabet[j])
+	a = ci(alphabet[j])
 	print(alphabet[j], end='')
 
-	for i in range(0x40):
+	for i in range(0x80):
 		lin = [0]*size
 		lin[a] = 1
 		vins = [np.array(lin)]
 		(mem, vouts) = net.feedforward(mem, vins)
 		a = np.argmax(vouts[0])
-		letter = char(a)
-
-		if letter == '\n':
-			break
-		print(letter, end='')
+		c = ic(a)
+		print(c, end='')
 	print()

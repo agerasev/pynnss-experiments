@@ -9,7 +9,7 @@ from random import random
 import numpy as np
 
 node = Matrix(1, 1)
-node.weight[0] = 0
+node.weight[0] = -2
 
 for i in range(0x10):
 	for j in range(0x20):
@@ -20,7 +20,7 @@ for i in range(0x10):
 
 
 		vres = np.array([1])
-		verrs = [(np.tanh(vouts[0]) - vres)]
+		verrs = [(np.tanh(vouts[0]) - vres)/(np.cosh(vouts[0])**2)]
 		cost = np.sum((verrs[0])**2)
 
 		# backpropagate
@@ -28,4 +28,4 @@ for i in range(0x10):
 		node.backprop(exp, mem, verrs)
 		node.learn(exp, 1e-2)
 
-	print('#'*math.floor(0x20*node.weight[0][0]))
+	print('#'*math.floor(0x20*(2 + node.weight[0][0])))

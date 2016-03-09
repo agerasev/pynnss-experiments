@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from pynn.element import Matrix, Bias, Sigmoid
+from pynn.element import Matrix, Bias, Tanh
 from pynn.path import Path
 from pynn.network import Network
 

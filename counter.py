@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from pynn.element import Matrix, Sigmoid, Merger, Fork
+from pynn.element import Matrix, Tanh, Merger, Fork
 from pynn.path import Path
 from pynn.network import Network
 
@@ -15,7 +15,7 @@ shid = 8
 net.nodes[0] = Matrix(size, shid) # W_xh
 net.nodes[1] = Matrix(shid, shid) # W_hh
 net.nodes[2] = Merger(shid, 2)
-net.nodes[3] = Sigmoid(shid)
+net.nodes[3] = Tanh(shid)
 net.nodes[4] = Fork(shid, 2)
 net.nodes[5] = Matrix(shid, size) # W_hy
 
