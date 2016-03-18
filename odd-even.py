@@ -1,22 +1,20 @@
 #!/usr/bin/python3
 
-from pynn.element import Matrix, Bias, Tanh
-from pynn.path import Path
-from pynn.network import Network
+import pynn as nn
 
 import math
 from random import random
 import numpy as np
 
-net = Network(1, 1)
+net = nn.Network(1, 1)
 
 nin = 4
 nout = 2
 
-net.nodes[0] = Matrix(nin, nout)
+net.nodes[0] = nn.MatrixProduct(nin, nout)
 
-net.paths.append(Path((-1, 0), ( 0, 0)))
-net.paths.append(Path(( 0, 0), (-1, 0)))
+net.paths.append(nn.Path((-1, 0), ( 0, 0)))
+net.paths.append(nn.Path(( 0, 0), (-1, 0)))
 
 net.update()
 
@@ -27,18 +25,19 @@ for k in range(0x10):
 	cost = 0.0
 
 	for j in range(batches_num):
-		mems = [net.Memory()]
-		exp = net.Experience()
+		grad = net.newGradient()
 
 		for i in range(batch_size):
+			state = net.newState()
+			error = net.newError()
+
 			a = math.floor(random()*nin)
 			lin = [0]*nin
 			lin[a] = 1
 			vins = [np.array(lin)]
 			
 			# feedforward
-			(mem, vouts) = net.feedforward(mems[len(mems) - 1], vins)
-			mems.append(mem)
+			vouts = net.transmit(state, vins)
 
 			lres = [0]*nout
 			lres[a%nout] = 1
@@ -47,9 +46,10 @@ for k in range(0x10):
 			cost += np.sum((verrs[0])**2)
 
 			# backpropagate
-			net.backprop(exp, mems.pop(), verrs)
+			net.backprop(grad, error, state, verrs)
 
-		net.learn(exp, 1e-2/batch_size)
+		grad.mul(1/batch_size)
+		net.learn(grad, 1e-2)
 
 	print(str(k) + ' cost: ' + str(cost/batch_size/batches_num))
 

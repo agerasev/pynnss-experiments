@@ -5,6 +5,7 @@ from pynn.path import Path
 from pynn.network import Network
 
 import math
+from math import floor
 from random import random, shuffle
 import numpy as np
 
@@ -17,6 +18,54 @@ def ic(i):
 	if i == 0x5F:
 		return '\n'
 	return chr(i + 0x20)
+
+'''
+class RecurrentNetwork(Network):
+	def __init__(self, sin, sout, shid):
+		Network.__init__(self, 1, 1)
+
+		self.shid = shid
+
+		# nodes
+		self.nodes[0] = Matrix(sin, shid)  # W_xh
+		self.nodes[1] = Matrix(shid, shid) # W_hh
+		self.nodes[2] = Merger(shid, 2)
+		self.nodes[3] = Tanh(shid)
+		self.nodes[4] = Fork(shid, 2)
+		self.nodes[5] = Matrix(shid, sout) # W_hy
+
+		# paths
+		self.paths.append(Path((-1, 0), ( 0, 0)))
+		self.paths.append(Path(( 0, 0), ( 2, 0)))
+		self.paths.append(Path(( 1, 0), ( 2, 1)))
+		self.paths.append(Path(( 2, 0), ( 3, 0)))
+		self.paths.append(Path(( 3, 0), ( 4, 0)))
+		self.paths.append(Path(( 4, 1), ( 1, 0)))
+		self.paths.append(Path(( 4, 0), ( 5, 0)))
+		self.paths.append(Path(( 5, 0), (-1, 0)))
+
+		self.update()
+
+	def Memory(self):
+		mem = Network.Memory(self)
+		mem.pipes[2].data = np.zeros(self.shid)
+		return mem
+
+	class _Experience(Network._Experience):
+		def __init__(self, par):
+			self.shid = 0
+			Network._Experience.__init__(self, par)
+
+		def _clean(self):
+			Network._Experience._clean(self)
+			self.pipes[5].data = np.zeros(self.shid)
+
+	def Experience(self, par):
+		exp = Network.Experience(self, par)
+		exp.shid = self.shid
+		exp.pipes[5].data = np.zeros(self.shid)
+		return exp
+'''
 
 net = Network(1, 1)
 size = 0x60
@@ -51,57 +100,59 @@ save_err = np.seterr(all='call')
 '''
 
 book = open('harry_potter_and_the_sorcerers_stone.txt').read(0x1000)
-parts = []
-sents = []
 elems = []
 
 i = 0
-while i >= 0:
-	ni = book.find('\n', i)
-	if ni < 0:
-		parts.append(book[i:])
+while i < len(book):
+	ni = i + floor(32 + 32*random())
+	if ni > len(book):
+		elems.append(book[i:])
 		break
-	parts.append(book[i:ni])
-	i = ni + 1
-
-for part in parts:
-	if len(part) < 1:
-		continue
-	i = 0
-	while i >= 0:
-		ecs = '.?!'
-		ni = -1
-		for c in ecs:
-			ti = part.find(c, i)
-			if ti >= 0 and (ni < 0 or ti < ni):
-				ni = ti
-		if ni < 0:
-			sents.append(part[i:])
-			break
-		sents.append(part[i:(ni+1)])
-		i = ni + 2
-
-for elem in sents:
-	if len(elem) > 1:
-		elems.append(elem)
+	else:
+		elems.append(book[i:ni])
+	i = ni
 
 '''
 for elem in elems:
 	print(elem)
 '''
 
-batch_size = 0x1
+def gen(c, l):
+	mem = net.Memory()
+	mem.pipes[net._fpath_link[(1, 0)]].data = np.zeros(shid)
 
-for k in range(0x10):
-	cost = 0.0
+	a = ci(c)
+	res = c
+	for i in range(l):
+		lin = [0]*size
+		lin[a] = 1
+		vins = [np.array(lin)]
+		(mem, vouts) = net.feedforward(mem, vins)
+		a = np.argmax(vouts[0])
+		c = ic(a)
+		res += c
+	
+	return res
+
+
+batch_size = 10
+
+par = {
+	"clip": 0.5,
+	"adagrad": True
+	}
+exp = net.Experience(par)
+
+for k in range(1000):
+	cost = 0
 	shuffle(elems)
 
-	for j in range(math.floor(len(elems)/batch_size)):
-		mem = net.Memory()
-		mem_stack = [mem]
-		exp = net.Experience()
+	for j in range(floor(len(elems)/batch_size)):
 
 		for i in range(batch_size):
+			mem = net.Memory()
+			mem_stack = [mem]
+
 			elem = elems[j*batch_size + i]
 			depth = len(elem)
 
@@ -122,6 +173,8 @@ for k in range(0x10):
 				mem_stack.append(mem)
 				vouts_stack.append(vouts)
 
+			lcost = 0
+
 			for l in range(depth - 1):
 				a = ci(elem[depth - l - 1])
 				lres = [0]*size
@@ -130,32 +183,22 @@ for k in range(0x10):
 				vin = vouts_stack.pop()[0]
 				vout = np.tanh(vin)
 				verrs = [vout - vres]
-				cost += np.sum((verrs[0])**2)
+				lcost += np.sum(verrs[0]**2)/size
+				#-np.sum((1 + vres)*np.log(1 + vout) + (1 - vres)*np.log(1 - vout))/size
 
 				# backpropagate
 				net.backprop(exp, mem_stack.pop(), verrs)
-		
-		exp.clip(5e0)
-		net.learn(exp, 1e-3/batch_size)
 
-	print(str(k) + ' cost: ' + str(cost/len(elems)))
+			cost += lcost/depth
+		
+		net.learn(exp, 5e-2)
+		exp.clean()
+
+	print(str(k) + ' cost: ' + str(100*cost/len(elems)))
+	if (k + 1)%10 == 0:
+		print(gen('a', 0x80))
 
 alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 for j in range(len(alphabet)):
-
-	mem = net.Memory()
-	mem.pipes[net._fpath_link[(1, 0)]].data = np.zeros(shid)
-
-	a = ci(alphabet[j])
-	print(alphabet[j], end='')
-
-	for i in range(0x80):
-		lin = [0]*size
-		lin[a] = 1
-		vins = [np.array(lin)]
-		(mem, vouts) = net.feedforward(mem, vins)
-		a = np.argmax(vouts[0])
-		c = ic(a)
-		print(c, end='')
-	print()
+	print(gen(alphabet[j], 0x80))
