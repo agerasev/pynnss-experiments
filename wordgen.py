@@ -1,11 +1,9 @@
 #!/usr/bin/python3
 
-from pynn.element import Matrix, Tanh, Merger, Fork
-from pynn.path import Path
-from pynn.network import Network
-
+import pynn as nn
 import math
 from random import random, shuffle
+from copy import copy
 import numpy as np
 
 def idx(c):
@@ -31,31 +29,33 @@ def char(i):
 		return chr(0xA)
 	return ''
 
-net = Network(1, 1)
+net = nn.Network(1, 1)
 size = 0x1D
 shid = 0x80
 
-net.nodes[0] = Matrix(size, shid) # W_xh
-net.nodes[1] = Matrix(shid, shid) # W_hh
-net.nodes[2] = Merger(shid, 2)
-net.nodes[3] = Tanh(shid)
-net.nodes[4] = Fork(shid, 2)
-net.nodes[5] = Matrix(shid, size) # W_hy
+net.nodes[0] = nn.MatrixProduct(size, shid) # W_xh
+net.nodes[1] = nn.MatrixProduct(shid, shid) # W_hh
+net.nodes[2] = nn.Merger(shid, 2)
+net.nodes[3] = nn.Bias(shid)
+net.nodes[4] = nn.Tanh(shid)
+net.nodes[5] = nn.Fork(shid, 2)
+net.nodes[6] = nn.MatrixProduct(shid, size) # W_hy
 
-net.paths.append(Path((-1, 0), ( 0, 0)))
-net.paths.append(Path(( 0, 0), ( 2, 0)))
-net.paths.append(Path(( 1, 0), ( 2, 1)))
+net.paths.append(nn.Path((-1, 0), ( 0, 0)))
+net.paths.append(nn.Path(( 0, 0), ( 2, 0)))
+net.paths.append(nn.Path(( 1, 0), ( 2, 1)))
 
-net.paths.append(Path(( 2, 0), ( 3, 0)))
-net.paths.append(Path(( 3, 0), ( 4, 0)))
+net.paths.append(nn.Path(( 2, 0), ( 3, 0)))
+net.paths.append(nn.Path(( 3, 0), ( 4, 0)))
+net.paths.append(nn.Path(( 4, 0), ( 5, 0)))
 
-net.paths.append(Path(( 4, 1), ( 1, 0)))
-net.paths.append(Path(( 4, 0), ( 5, 0)))
-net.paths.append(Path(( 5, 0), (-1, 0)))
+net.paths.append(nn.Path(( 5, 1), ( 1, 0)))
+net.paths.append(nn.Path(( 5, 0), ( 6, 0)))
+net.paths.append(nn.Path(( 6, 0), (-1, 0)))
 
 net.update()
 
-batch_size = 0x10
+batch_size = 20
 '''
 def err_handler(type, flag):
 	raise Exception("Floating point error (%s), with flag %s" % (type, flag))
@@ -68,23 +68,23 @@ words = []
 for word in file:
 	words.append(word)
 
-del words[0x400:]
+del words[1000:]
 
-for k in range(0x20):
+for k in range(200):
 	cost = 0.0
 	shuffle(words)
 
 	for j in range(math.floor(len(words)/batch_size)):
-		mem = net.Memory()
-		mem_stack = [mem]
-		exp = net.Experience()
+		grad = net.newGradient()
+		backprop_count = 0
 
 		for i in range(batch_size):
 			word = words[j*batch_size + i]
 			depth = len(word)
 
-			mem.pipes[net._fpath_link[(1, 0)]].data = np.zeros(shid)
-			exp.pipes[net._bpath_link[(1, 0)]].data = np.zeros(shid)
+			state = net.newState()
+			state.pipes[net._flink[(1, 0)]].data = np.zeros(shid)
+			state_stack = [state]
 
 			vouts_stack = []
 
@@ -95,9 +95,13 @@ for k in range(0x20):
 				vins = [np.array(lin)]
 				
 				# feedforward
-				(mem, vouts) = net.feedforward(mem, vins)
-				mem_stack.append(mem)
+				state = copy(state)
+				vouts = net.transmit(state, vins)
+				state_stack.append(state)
 				vouts_stack.append(vouts)
+
+			error = net.newError()
+			error.pipes[net._blink[(1, 0)]].data = np.zeros(shid)
 
 			for l in range(depth - 1):
 				a = idx(word[depth - l - 1])
@@ -110,10 +114,12 @@ for k in range(0x20):
 				cost += np.sum((verrs[0])**2)
 
 				# backpropagate
-				net.backprop(exp, mem_stack.pop(), verrs)
+				net.backprop(grad, error, state_stack.pop(), verrs)
+				backprop_count += 1
 		
-		exp.clip(1e1)
-		net.learn(exp, 1e-2/batch_size)
+		grad.mul(1/backprop_count)
+		grad.clip(1e1)
+		net.learn(grad, 1e-2)
 
 	print(str(k) + ' cost: ' + str(cost/len(words)))
 
@@ -121,8 +127,8 @@ alphabet = 'abcdefghijklmnopqrstuvwxyz'
 
 for j in range(len(alphabet)):
 
-	mem = net.Memory()
-	mem.pipes[net._fpath_link[(1, 0)]].data = np.zeros(shid)
+	state = net.newState()
+	state.pipes[net._flink[(1, 0)]].data = np.zeros(shid)
 
 	a = idx(alphabet[j])
 	print(alphabet[j], end='')
@@ -131,7 +137,7 @@ for j in range(len(alphabet)):
 		lin = [0]*size
 		lin[a] = 1
 		vins = [np.array(lin)]
-		(mem, vouts) = net.feedforward(mem, vins)
+		vouts = net.transmit(state, vins)
 		a = np.argmax(vouts[0])
 		letter = char(a)
 
