@@ -3,7 +3,7 @@
 """
 Minimal character-level Vanilla RNN model. Written by Andrej Karpathy (@karpathy)
 BSD License
-Slightly modified by nthend
+Slightly modified by Nthend
 """
 import numpy as np
 
