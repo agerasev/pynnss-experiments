@@ -12,8 +12,9 @@ size = len(chars)
 ci = {ch: i for i, ch in enumerate(chars)}
 ic = {i: ch for i, ch in enumerate(chars)}
 
+seq_num = 100
 seq_len = 25
-shid = 100
+shid = 400
 rate_f = 1e-1
 
 net = nn.Network(1, 1)
@@ -55,41 +56,42 @@ state = net.newState()
 loss = 0
 grad = net.newGradient()
 
-with ff:
-	state_stack = []
-	vouts_stack = []
+for j in range(seq_num):
+	with ff:
+		state_stack = []
+		vouts_stack = []
 
-	for i in range(seq_len):
-		a = ci[data[pos + i]]
-		vin = np.zeros(size)
-		vin[a] = 1
-		vins = [vin]
+		for i in range(seq_len):
+			a = ci[data[pos + i]]
+			vin = np.zeros(size)
+			vin[a] = 1
+			vins = [vin]
 
-		# feedforward
-		vouts = net.transmit(state, vins)
-		state_stack.append(copy(state))
-		vouts_stack.append(vouts)
+			# feedforward
+			vouts = net.transmit(state, vins)
+			state_stack.append(copy(state))
+			vouts_stack.append(vouts)
 
-with bp:
-	error = net.newError()
+	with bp:
+		error = net.newError()
 
-	for i in reversed(range(seq_len)):
-		a = ci[data[pos + i + 1]]
-		vres = np.zeros(size)
-		vres[a] = 1
-		vout = vouts_stack.pop()[0]
-		evout = np.exp(vout)
-		nevout = evout/np.sum(evout)
-		verrs = [nevout - vres]
-		loss += -np.log(nevout[a])
+		for i in reversed(range(seq_len)):
+			a = ci[data[pos + i + 1]]
+			vres = np.zeros(size)
+			vres[a] = 1
+			vout = vouts_stack.pop()[0]
+			evout = np.exp(vout)
+			nevout = evout/np.sum(evout)
+			verrs = [nevout - vres]
+			loss += -np.log(nevout[a])
 
-		# backpropagate
-		net.backprop(grad, error, state_stack.pop(), verrs)
+			# backpropagate
+			net.backprop(grad, error, state_stack.pop(), verrs)
 
-with gd:
-	grad.clip(5e0)
-	rate.update(grad)
-	net.learn(grad, rate)
+	with gd:
+		grad.clip(5e0)
+		rate.update(grad)
+		net.learn(grad, rate)
 
 print('ff: %f' % (1e3*ff.time))
 print(' ff_net: %f' % (1e3*net.fprof.time))
