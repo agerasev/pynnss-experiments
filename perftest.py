@@ -21,7 +21,7 @@ net = nn.Network(1, 1)
 
 net.nodes[0] = nn.MatrixProduct(size, shid)  # W_xh
 net.nodes[1] = nn.MatrixProduct(shid, shid)  # W_hh
-net.nodes[2] = nn.Merger(shid, 2)
+net.nodes[2] = nn.Join(shid, 2)
 net.nodes[3] = nn.Bias(shid)
 net.nodes[4] = nn.Tanh(shid)
 net.nodes[5] = nn.Fork(shid, 2)
